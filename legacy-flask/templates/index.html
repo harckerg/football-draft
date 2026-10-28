@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#07160f">
+  <title>FOOTBALL DRAFT · 足球分队系统</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23f4f7f0' stroke='%230b1f14' stroke-width='6'/%3E%3Cpath d='M50 26l19 14-7 22H38l-7-22z' fill='%230b1f14'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+
+<!-- ===================== 球场背景 ===================== -->
+<div class="stadium" aria-hidden="true">
+  <div class="stadium-glow"></div>
+  <div class="stadium-crowd"></div>
+  <div class="stadium-turf"></div>
+  <div class="stadium-center-circle"></div>
+</div>
+
+<!-- ===================== 顶部记分牌 ===================== -->
+<header class="scoreboard">
+  <div class="brand">
+    <div class="crest">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <circle cx="32" cy="32" r="27" fill="#f4f7f0" stroke="#07160f" stroke-width="3"/>
+        <path d="M32 15l13.8 10-5.3 16.2H23.5L18.2 25z" fill="#07160f"/>
+        <path d="M32 15V4M45.8 25l11-4.4M40.5 41.2L46 54M23.5 41.2L18 54M18.2 25L7.2 20.6"
+              fill="none" stroke="#07160f" stroke-width="2.4" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <div class="brand-text">
+      <h1>FOOTBALL <span>DRAFT</span></h1>
+      <p>足球分队系统 · 拖拽入队 · 一键开球</p>
+    </div>
+  </div>
+
+  <div class="hud" role="status" aria-live="polite">
+    <div class="hud-cell">
+      <span>球员</span>
+      <strong id="hud-players">0</strong>
+    </div>
+    <div class="hud-cell">
+      <span>球队</span>
+      <strong id="hud-teams">0</strong>
+    </div>
+    <div class="hud-cell">
+      <span>待分配</span>
+      <strong id="hud-pool">0</strong>
+    </div>
+    <div class="hud-cell hud-status">
+      <span>状态</span>
+      <strong id="hud-save"><i class="dot"></i>就绪</strong>
+    </div>
+  </div>
+
+  <div class="header-actions">
+    <button class="btn btn-ghost" id="btn-undo" type="button" title="撤销 (Ctrl+Z)">↺ 撤销</button>
+    <button class="btn btn-ghost" id="btn-export" type="button" title="导出名单">⤓ 导出</button>
+    <button class="btn btn-ghost btn-danger-ghost" id="btn-reset" type="button">重置</button>
+  </div>
+</header>
+
+<!-- ===================== 主体 ===================== -->
+<main class="layout">
+
+  <!-- 左侧：球员名单 -->
+  <aside class="panel roster">
+    <div class="panel-head">
+      <h2><i class="dot lime"></i>球员名单</h2>
+      <span class="pill" id="roster-count">0 人</span>
+    </div>
+
+    <form class="add-form" id="player-form" autocomplete="off">
+      <input id="player-input" type="text" maxlength="24" placeholder="输入姓名后回车，可一次粘贴多个"
+             aria-label="球员姓名">
+      <button class="btn btn-primary" type="submit">加入</button>
+    </form>
+
+    <div class="roster-tools">
+      <button class="link-btn" id="btn-batch" type="button">批量粘贴</button>
+      <button class="link-btn danger" id="btn-clear-roster" type="button">清空名单</button>
+      <input id="roster-search" class="search" type="search" placeholder="搜索球员…" aria-label="搜索球员">
+    </div>
+
+    <ul class="roster-list" id="roster-list"></ul>
+
+    <p class="panel-hint">
+      拖动球员名牌到球场即可入队；也可以先点选球员，再点目标球场。
+    </p>
+  </aside>
+
+  <!-- 右侧：分组板 -->
+  <section class="board">
+    <div class="board-head">
+      <h2>
+        分组板
+        <span class="board-sub" id="board-sub">2 支球队</span>
+      </h2>
+      <div class="board-tools">
+        <div class="stepper" title="球队数量">
+          <button type="button" data-step="-1" aria-label="减少球队">−</button>
+          <input id="team-count" type="number" min="2" max="12" value="2" aria-label="球队数量">
+          <button type="button" data-step="1" aria-label="增加球队">+</button>
+        </div>
+        <button class="btn btn-lime" id="btn-shuffle" type="button">⚡ 随机分队</button>
+        <button class="btn btn-ghost" id="btn-clear-teams" type="button">清空队伍</button>
+      </div>
+    </div>
+
+    <div class="board-empty" id="board-empty">
+      <div class="empty-crest">
+        <svg viewBox="0 0 64 64" aria-hidden="true">
+          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2.5"/>
+          <path d="M32 15l13.8 10-5.3 16.2H23.5L18.2 25z" fill="currentColor" opacity=".85"/>
+        </svg>
+      </div>
+      <h3>先填写球员名单</h3>
+      <p>在左侧输入姓名，或一次粘贴整份名单，再设定球队数量，把球员拖进各自的球场。</p>
+      <button class="btn btn-lime" id="btn-demo" type="button">载入示例名单</button>
+    </div>
+
+    <div class="teams" id="teams"></div>
+  </section>
+</main>
+
+<!-- ===================== 替补席 ===================== -->
+<footer class="tray">
+  <div class="tray-head">
+    <span class="tray-title">替补席</span>
+    <span class="tray-sub">待分配</span>
+    <span class="tray-count" id="tray-count">0</span>
+  </div>
+  <div class="tray-body dropzone" id="pool" data-zone="pool">
+    <span class="tray-empty">全部球员都已就位，准备开球！</span>
+  </div>
+</footer>
+
+<!-- ===================== 对话框 ===================== -->
+<dialog class="dialog" id="dialog-batch">
+  <div class="dialog-inner">
+    <h3>批量粘贴球员</h3>
+    <p>每行一个名字，也可以用逗号、顿号或分号分隔。</p>
+    <textarea id="batch-text" rows="10" spellcheck="false" placeholder="张三&#10;李四&#10;王五"></textarea>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-primary" type="button" id="batch-ok">加入名单</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-confirm">
+  <div class="dialog-inner">
+    <h3 id="confirm-title">确认</h3>
+    <p id="confirm-text"></p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-danger" type="button" id="confirm-ok">确定</button>
+    </div>
+  </div>
+</dialog>
+
+<div class="toasts" id="toasts" aria-live="polite"></div>
+
+<noscript>
+  <div class="noscript">这个页面需要启用 JavaScript 才能拖拽分队。</div>
+</noscript>
+
+<script src="{{ url_for('static', filename='js/app.js') }}" defer></script>
+</body>
+</html>

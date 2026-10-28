@@ -1,0 +1,16 @@
+# 系统 / 编辑器
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.idea/
+.vscode/
+
+# Python（legacy-flask 归档里可能产生）
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# 运行时数据
+legacy-flask/data/state.json
