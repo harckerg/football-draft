@@ -48,6 +48,110 @@ body {
 }
 
 /* ------------------------------------------------------------
+   比赛信息栏（场地 / 时间 / 对手）
+   ------------------------------------------------------------ */
+.match-info {
+  display: flex;
+  align-items: flex-end;
+  gap: clamp(10px, 1.6vw, 22px);
+  flex-wrap: wrap;
+  padding: 12px clamp(14px, 2vw, 22px);
+  border-radius: var(--radius);
+  border: 1px solid rgba(200, 255, 61, 0.14);
+  background: linear-gradient(180deg, rgba(13, 36, 23, 0.9), rgba(6, 18, 12, 0.86));
+  box-shadow: var(--shadow-md);
+  backdrop-filter: blur(8px);
+}
+
+.match-tag {
+  display: flex; align-items: center; gap: 8px;
+  align-self: center;
+  padding-right: clamp(8px, 1.2vw, 16px);
+  border-right: 1px solid var(--line-soft);
+  min-height: 38px;
+}
+.match-tag svg { width: 20px; height: 20px; color: var(--lime); flex: none; }
+.match-tag span {
+  font-size: 12px; letter-spacing: .18em; text-transform: uppercase;
+  font-weight: 700; color: rgba(238, 247, 240, 0.86);
+  white-space: nowrap;
+}
+
+.match-field {
+  display: flex; flex-direction: column; gap: 5px;
+  flex: 1 1 170px;
+  min-width: 0;
+}
+.match-field label {
+  font-size: 10.5px; letter-spacing: .18em; text-transform: uppercase;
+  color: rgba(207, 217, 205, 0.6);
+  padding-left: 2px;
+}
+.match-field input {
+  font: inherit; font-size: 13.5px;
+  width: 100%;
+  padding: 8px 11px;
+  border-radius: 10px;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 0, 0, 0.38);
+  color: var(--paper);
+  transition: border-color .18s ease, box-shadow .18s ease;
+}
+.match-field input::placeholder { color: rgba(207, 217, 205, 0.38); }
+.match-field input:hover { border-color: rgba(238, 247, 240, 0.3); }
+.match-field input:focus {
+  outline: none;
+  border-color: rgba(200, 255, 61, 0.6);
+  box-shadow: 0 0 0 3px rgba(200, 255, 61, 0.14);
+}
+/* 让日期选择器的小图标在深色背景上可见 */
+.match-field input[type="datetime-local"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+  opacity: .55;
+  cursor: pointer;
+}
+.match-field input[type="datetime-local"]::-webkit-calendar-picker-indicator:hover { opacity: .95; }
+
+.match-clear { align-self: center; margin-left: auto; }
+
+body.is-readonly .match-field input,
+body.is-readonly .match-clear {
+  opacity: .5;
+  pointer-events: none;
+}
+
+/* ------------------------------------------------------------
+   球队颜色选择（点球衣换色）
+   ------------------------------------------------------------ */
+.kit-picker {
+  position: relative;
+  flex: none;
+  display: block;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.kit-picker:focus-within { outline: 2px solid var(--lime); outline-offset: 2px; }
+.kit-color {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  opacity: 0;
+  cursor: pointer;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.kit-color::-webkit-color-swatch-wrapper { padding: 0; }
+.kit-color::-webkit-color-swatch { border: 0; }
+body.is-readonly .kit-picker { cursor: default; }
+body.is-readonly .kit-color { pointer-events: none; }
+
+.team-name:hover { background: rgba(0, 0, 0, 0.28); }
+.team-name::placeholder { color: rgba(255, 255, 255, 0.35); }
+
+/* ------------------------------------------------------------
    只读预览提示条
    ------------------------------------------------------------ */
 .viewbar {
@@ -614,7 +718,15 @@ body.dragging .dropzone.is-target {
   display: flex; align-items: stretch; gap: 0;
   padding: 10px 12px;
   min-height: 84px;
+  /* 吸底：页面再长，替补席也始终是可见的拖拽目标 */
+  position: sticky;
+  bottom: 10px;
+  z-index: 30;
+  box-shadow: 0 -8px 30px -18px rgba(0, 0, 0, 0.9), var(--shadow-md);
+  backdrop-filter: blur(12px);
 }
+/* 吸底时给下方内容留出呼吸空间 */
+body { padding-bottom: 8px; }
 .tray-head {
   flex: none;
   display: flex; flex-direction: column; justify-content: center; gap: 2px;
@@ -630,13 +742,19 @@ body.dragging .dropzone.is-target {
 }
 .tray-body {
   flex: 1 1 auto;
-  display: flex; flex-wrap: wrap; align-content: center; gap: 8px;
+  display: flex; flex-wrap: wrap; align-content: flex-start; gap: 8px;
   border-radius: 12px;
   border: 1px dashed rgba(238, 247, 240, 0.16);
   padding: 8px;
   min-height: 60px;
+  max-height: 132px;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(200, 255, 61, 0.35) transparent;
   transition: border-color .18s ease, background .18s ease;
 }
+.tray-body::-webkit-scrollbar { width: 8px; }
+.tray-body::-webkit-scrollbar-thumb { background: rgba(200, 255, 61, 0.28); border-radius: 99px; }
 .tray-body.is-target { border-color: var(--lime); background: rgba(200, 255, 61, 0.07); }
 .tray-empty {
   font-size: 12px; letter-spacing: .06em; color: rgba(207, 217, 205, 0.4);
@@ -712,6 +830,34 @@ body.dragging .dropzone.is-target {
 
 @media (max-width: 860px) {
   body { padding: 12px 12px 18px; gap: 12px; }
+  /* 窄屏：标签与「清空」同行，三个字段两列排布，尽量少占首屏 */
+  .match-info {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 10px;
+    padding: 10px 12px;
+    align-items: end;
+  }
+  .match-tag {
+    grid-column: 1;
+    align-self: center;
+    border-right: 0;
+    border-bottom: 0;
+    padding: 0;
+    min-height: 0;
+  }
+  .match-clear {
+    grid-column: 2;
+    justify-self: end;
+    align-self: center;
+    margin-left: 0;
+  }
+  .match-field { flex: none; min-width: 0; }
+  .match-field:nth-of-type(1) { grid-column: 1 / -1; }  /* 场地占满一行 */
+  .match-field:nth-of-type(2),
+  .match-field:nth-of-type(3) { grid-column: auto; }
+  .match-field label { font-size: 10px; letter-spacing: .12em; }
+  .match-field input { padding: 7px 9px; font-size: 13px; }
   .layout { grid-template-columns: 1fr; }
   .roster { max-height: 46vh; min-height: 320px; }
   .hud { order: 3; margin-left: 0; width: 100%; }
@@ -720,7 +866,8 @@ body.dragging .dropzone.is-target {
   .hud-status strong { font-size: 11.5px; }
   .header-actions { order: 4; width: 100%; }
   .header-actions .btn { flex: 1 1 auto; }
-  .tray { flex-direction: column; gap: 8px; }
+  .tray { flex-direction: column; gap: 8px; bottom: 6px; }
+  .tray-body { max-height: 104px; }
   .tray-head { flex-direction: row; align-items: center; gap: 10px; border-right: 0; border-bottom: 1px solid var(--line-soft); padding: 0 0 8px; margin: 0; }
   .tray-count { font-size: 20px; }
 }

@@ -51,6 +51,11 @@
     btnShare: $('#btn-share'),
     btnImport: $('#btn-import'),
     btnReset: $('#btn-reset'),
+    matchInfo: $('#match-info'),
+    matchVenue: $('#match-venue'),
+    matchKickoff: $('#match-kickoff'),
+    matchOpponent: $('#match-opponent'),
+    matchClear: $('#match-clear'),
     viewbar: $('#viewbar'),
     btnAdopt: $('#btn-adopt'),
     btnExitView: $('#btn-exit-view'),
@@ -89,12 +94,29 @@
 
   function emptyState() {
     return {
-      version: 1,
+      version: 2,
       updatedAt: null,
       seq: { player: 0, team: 0 },
+      match: { venue: '', kickoff: '', opponent: '' },
       players: {},
       pool: [],
       teams: [],
+    };
+  }
+
+  function emptyMatch() {
+    return { venue: '', kickoff: '', opponent: '' };
+  }
+
+  function cleanMatch(raw) {
+    if (!raw || typeof raw !== 'object') return emptyMatch();
+    const str = (value, limit) => (typeof value === 'string' ? value.trim().slice(0, limit) : '');
+    const kickoff = str(raw.kickoff, 32);
+    return {
+      venue: str(raw.venue, 40),
+      // 只接受 datetime-local 或 ISO 形态，其它一律丢掉
+      kickoff: /^\d{4}-\d{2}-\d{2}(T\d{2}:\d{2})?/.test(kickoff) ? kickoff : '',
+      opponent: str(raw.opponent, 40),
     };
   }
 
@@ -102,6 +124,7 @@
     if (!raw || typeof raw !== 'object') return null;
 
     const next = emptyState();
+    next.match = cleanMatch(raw.match);
     const rawPlayers = raw.players && typeof raw.players === 'object' ? raw.players : {};
     Object.keys(rawPlayers).forEach((pid) => {
       const item = rawPlayers[pid];
@@ -129,7 +152,7 @@
       next.teams.push({
         id,
         name: (typeof item.name === 'string' && item.name.trim().slice(0, 16)) || `球队${next.teams.length + 1}`,
-        color: /^#[0-9a-fA-F]{6}$/.test(item.color || '') ? String(item.color).toLowerCase() : COLORS[next.teams.length % COLORS.length],
+        color: normalizeColor(item.color, COLORS[next.teams.length % COLORS.length]),
         players,
       });
     });
@@ -166,6 +189,17 @@
     }
 
     return next;
+  }
+
+  function normalizeColor(value, fallback) {
+    if (typeof value !== 'string') return fallback;
+    const hex = value.trim().toLowerCase();
+    if (/^#[0-9a-f]{6}$/.test(hex)) return hex;
+    // 兼容 3 位写法
+    if (/^#[0-9a-f]{3}$/.test(hex)) {
+      return '#' + hex.slice(1).split('').map((ch) => ch + ch).join('');
+    }
+    return fallback;
   }
 
   function suffixNumber(value) {
@@ -249,6 +283,7 @@
      ---------------------------------------------------------- */
   function render() {
     renderHud();
+    renderMatchInfo();
     renderRoster();
     renderTeams();
     renderPool();
@@ -378,7 +413,21 @@
       const kit = document.createElement('span');
       kit.className = 'kit';
       kit.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.6 3 5 4.9 2.6 9.3l3.2 1.8 1-1.9V21h10.4V9.2l1 1.9 3.2-1.8L19 4.9 15.4 3a3.4 3.4 0 0 1-6.8 0Z" fill="currentColor"/></svg>';
-      head.appendChild(kit);
+
+      // 球衣图标 = 换色入口
+      const kitWrap = document.createElement('label');
+      kitWrap.className = 'kit-picker';
+      kitWrap.title = readOnly ? team.name : '点击更换球队颜色';
+      const kitInput = document.createElement('input');
+      kitInput.type = 'color';
+      kitInput.className = 'kit-color';
+      kitInput.value = team.color;
+      kitInput.dataset.team = team.id;
+      kitInput.setAttribute('aria-label', `${team.name} 的球队颜色`);
+      if (readOnly) kitInput.disabled = true;
+      kitWrap.appendChild(kit);
+      kitWrap.appendChild(kitInput);
+      head.appendChild(kitWrap);
 
       const nameInput = document.createElement('input');
       nameInput.className = 'team-name';
@@ -717,7 +766,8 @@
 
   function sharePayload() {
     return {
-      v: 1,
+      v: 2,
+      m: state.match,
       p: Object.values(state.players).map((p) => p.name),
       t: state.teams.map((team) => ({
         n: team.name,
@@ -752,6 +802,7 @@
   function normalizeStateFromShare(data) {
     if (!data || typeof data !== 'object') return null;
     const next = emptyState();
+    next.match = cleanMatch(data.m);
     const names = Array.isArray(data.p) ? data.p : [];
     const idByName = new Map();
 
@@ -785,7 +836,7 @@
       next.teams.push({
         id: `t${next.seq.team}`,
         name: (typeof team.n === 'string' && team.n.trim().slice(0, 16)) || `球队${index + 1}`,
-        color: /^#[0-9a-fA-F]{6}$/.test(team.c || '') ? String(team.c).toLowerCase() : COLORS[index % COLORS.length],
+        color: normalizeColor(team.c, COLORS[index % COLORS.length]),
         players: members,
       });
     });
@@ -821,6 +872,7 @@
     document.body.classList.remove('is-readonly');
     els.viewbar.hidden = true;
     els.teamCount.disabled = false;
+    setMatchInputsDisabled(false);
     clearShareHash();
     selectedId = null;
     undoStack = [];
@@ -836,6 +888,7 @@
     document.body.classList.remove('is-readonly');
     els.viewbar.hidden = true;
     els.teamCount.disabled = false;
+    setMatchInputsDisabled(false);
     clearShareHash();
     loadLocalState();
     render();
@@ -1131,6 +1184,43 @@
   /* ----------------------------------------------------------
      导出
      ---------------------------------------------------------- */
+  function formatKickoff(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return value;
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ` +
+           `${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  }
+
+  function renderMatchInfo() {
+    if (document.activeElement !== els.matchVenue) els.matchVenue.value = state.match.venue || '';
+    if (document.activeElement !== els.matchKickoff) els.matchKickoff.value = state.match.kickoff || '';
+    if (document.activeElement !== els.matchOpponent) els.matchOpponent.value = state.match.opponent || '';
+  }
+
+  function updateMatch(field, value) {
+    if (readOnly) return;
+    const limit = field === 'kickoff' ? 32 : 40;
+    const next = String(value || '').trim().slice(0, limit);
+    if (state.match[field] === next) return;
+    state.match[field] = next;
+    changed();
+  }
+
+  function clearMatchInfo() {
+    if (!guardEditable()) return;
+    if (!state.match.venue && !state.match.kickoff && !state.match.opponent) {
+      toast('比赛信息已经是空的');
+      return;
+    }
+    pushUndo();
+    state.match = emptyMatch();
+    renderMatchInfo();
+    changed();
+    toast('比赛信息已清空');
+  }
+
   function exportText() {
     const stamp = new Date();
     const pad = (n) => String(n).padStart(2, '0');
@@ -1139,6 +1229,9 @@
     const lines = [];
     lines.push('FOOTBALL DRAFT · 足球分队结果');
     lines.push(`生成时间：${when}`);
+    if (state.match.opponent) lines.push(`对手：${state.match.opponent}`);
+    if (state.match.venue) lines.push(`场地：${state.match.venue}`);
+    if (state.match.kickoff) lines.push(`比赛时间：${formatKickoff(state.match.kickoff)}`);
     lines.push(`球员总数：${playerCount()}　球队数量：${state.teams.length}`);
     lines.push('');
 
@@ -1275,6 +1368,7 @@
       state = emptyState();
       for (let i = 0; i < MIN_TEAMS; i += 1) state.teams.push(makeTeam(state));
       selectedId = null;
+      renderMatchInfo();
       changed();
       toast('已重置');
     });
@@ -1313,6 +1407,28 @@
         const label = dest === 'pool' ? '替补席' : (state.teams.find((t) => t.id === dest) || {}).name || '球队';
         toast(`${state.players[selectedId] ? state.players[selectedId].name : ''} → ${label}`);
       }
+    });
+
+    // 比赛信息
+    els.matchVenue.addEventListener('input', () => updateMatch('venue', els.matchVenue.value));
+    els.matchKickoff.addEventListener('input', () => updateMatch('kickoff', els.matchKickoff.value));
+    els.matchOpponent.addEventListener('input', () => updateMatch('opponent', els.matchOpponent.value));
+    els.matchClear.addEventListener('click', clearMatchInfo);
+
+    // 球队颜色
+    els.teams.addEventListener('input', (event) => {
+      const picker = event.target.closest('.kit-color');
+      if (!picker) return;
+      const team = state.teams.find((t) => t.id === picker.dataset.team);
+      if (!team) return;
+      const color = normalizeColor(picker.value, team.color);
+      if (color === team.color) return;
+      if (!guardEditable()) {
+        picker.value = team.color;
+        return;
+      }
+      team.color = color;
+      changed();
     });
 
     // 球队改名
@@ -1406,6 +1522,12 @@
     return Boolean(loaded);
   }
 
+  function setMatchInputsDisabled(disabled) {
+    [els.matchVenue, els.matchKickoff, els.matchOpponent].forEach((input) => {
+      input.disabled = disabled;
+    });
+  }
+
   function enterReadOnlyPreview(shared) {
     sharedState = shared;
     state = normalize(JSON.parse(JSON.stringify(shared)));
@@ -1413,6 +1535,7 @@
     document.body.classList.add('is-readonly');
     els.viewbar.hidden = false;
     els.teamCount.disabled = true;
+    setMatchInputsDisabled(true);
   }
 
   function boot() {
