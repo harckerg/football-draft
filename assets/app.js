@@ -112,6 +112,10 @@
     statsNote: $('#stats-note'),
     overviewCards: $('#overview-cards'),
     leaderboards: $('#leaderboards'),
+    statsSearch: $('#stats-search'),
+    statsSearchClear: $('#stats-search-clear'),
+    statsSearchHint: $('#stats-search-hint'),
+    playerSpotlight: $('#player-spotlight'),
 
     // 对话框
     dialogBatch: $('#dialog-batch'),
@@ -847,8 +851,8 @@
   }
 
   const BOARDS = [
-    { key: 'attendance', label: '出勤率', fmt: (r) => r.M ? pct(r.attendance) : '0%', val: (r) => r.attendance },
-    { key: 'winRate', label: '出场胜率', fmt: (r) => r.winRate === null ? '—' : pct(r.winRate), val: (r) => r.winRate, nullable: true },
+    { key: 'attendance', label: '出勤率', fmt: (r) => pct(r.attendance), val: (r) => r.attendance, percent: true },
+    { key: 'winRate', label: '出场胜率', fmt: (r) => r.winRate === null ? '—' : pct(r.winRate), val: (r) => r.winRate, nullable: true, percent: true },
     { key: 'goals', label: '进球数', fmt: (r) => String(r.goals), val: (r) => r.goals },
     { key: 'assists', label: '助攻数', fmt: (r) => String(r.assists), val: (r) => r.assists },
     { key: 'hatGoals', label: '进球帽子戏法', fmt: (r) => String(r.hatGoals), val: (r) => r.hatGoals },
@@ -858,7 +862,12 @@
     { key: 'cleanSheet', label: '门将零封次数', fmt: (r) => String(r.cleanSheet), val: (r) => r.cleanSheet },
   ];
 
-  function pct(v) { return `${(v * 100).toFixed(0)}%`; }
+  function pct(v) {
+    const n = Number(v) * 100;
+    if (!Number.isFinite(n)) return '0%';
+    // 整数不显示小数，否则保留 1 位：100% / 66.7% / 33.3%
+    return `${Number.isInteger(n) ? n : n.toFixed(1)}%`;
+  }
 
   function sortRows(rows, board) {
     const arr = Object.values(rows);
@@ -1581,16 +1590,38 @@
   /* ==========================================================
      渲染：统计 / 排行榜
      ========================================================== */
+  function statsSearchTerm() {
+    return (els.statsSearch.value || '').trim().toLowerCase();
+  }
+
+  function matchesSearch(row, term) {
+    if (!term) return true;
+    const p = state.roster[row.pid];
+    return row.name.toLowerCase().includes(term) ||
+           String(p && p.number ? p.number : '').toLowerCase().includes(term) ||
+           String(p && p.note ? p.note : '').toLowerCase().includes(term);
+  }
+
   function renderStats() {
     const period = els.statsPeriod.value || 'history';
     const type = els.statsType.value || 'all';
     const data = computeStats(period, type);
+    const term = statsSearchTerm();
+
+    els.statsSearchClear.hidden = !term;
+    const allRows = Object.values(data.rows);
+    const visiblePids = new Set(allRows.filter((r) => matchesSearch(r, term)).map((r) => r.pid));
+    const rowsForBoards = {};
+    visiblePids.forEach((pid) => { rowsForBoards[pid] = data.rows[pid]; });
 
     const notes = [];
     if (!data.M.length) notes.push('当前筛选下没有比赛，统计为空。');
     if (data.undatedExcluded) notes.push(`有 ${data.undatedExcluded} 场未设日期的比赛未纳入此时段统计（历史全部口径下会计入）。`);
+    if (term) notes.push(`已按「${els.statsSearch.value.trim()}」筛选：${visiblePids.size} / ${allRows.length} 名球员，所有榜单仅显示匹配球员。`);
     notes.push('胜率分母 = 有明确赛果的参加场次；未录结果的比赛仍计入出勤率与参加次数。帽子戏法由进球/助攻 ≥3 自动推导。');
     els.statsNote.textContent = notes.join('  ');
+
+    renderSpotlight(data, term, visiblePids);
 
     // 概览
     const rows = Object.values(data.rows).sort((a, b) => b.appeared - a.appeared || b.wins - a.wins || a.name.localeCompare(b.name, 'zh'));
@@ -1605,10 +1636,16 @@
     els.overviewCards.appendChild(overviewCard('胜场总人次', String(totalWins),
       '按「获胜队到场球员」逐场累加', 'amber', miniRank(rows, 'wins', '胜场')));
 
-    // 榜单
+    // 榜单（按搜索结果过滤）
     const frag = document.createDocumentFragment();
+    if (!visiblePids.size) {
+      const empty = document.createElement('div');
+      empty.className = 'lb-empty';
+      empty.textContent = `没有匹配「${els.statsSearch.value.trim()}」的球员`;
+      frag.appendChild(empty);
+    }
     BOARDS.forEach((board) => {
-      const sorted = sortRows(data.rows, board);
+      const sorted = sortRows(rowsForBoards, board);
       const card = document.createElement('section');
       card.className = 'lb-card';
       const h = document.createElement('h3');
@@ -1622,10 +1659,11 @@
         const r = item.row;
         const tr = document.createElement('tr');
         if (i === 0 && item.ranked && item.value > 0) tr.className = 'top1';
+        if (term) tr.classList.add('ps-hit');
         const cells = [
           item.ranked ? String(i + 1) : '—',
           r.name + (r.active ? '' : '（停用）'),
-          board.nullable ? (item.value === null ? '—' : pct(item.value)) : item.value === null ? '—' : board.fmt(r),
+          item.value === null ? '—' : board.fmt(r),
           String(r.appeared), String(r.valid), String(r.wins),
         ];
         cells.forEach((v, ci) => {
@@ -1641,6 +1679,100 @@
       frag.appendChild(card);
     });
     els.leaderboards.replaceChildren(frag);
+  }
+
+  function renderSpotlight(data, term, visiblePids) {
+    if (!term) {
+      els.playerSpotlight.hidden = true;
+      els.playerSpotlight.replaceChildren();
+      els.statsSearchHint.textContent = '输入姓名可查看单个球员的完整数据与各项排名';
+      return;
+    }
+    const pids = Array.from(visiblePids);
+    if (pids.length !== 1) {
+      els.playerSpotlight.hidden = true;
+      els.playerSpotlight.replaceChildren();
+      els.statsSearchHint.textContent = pids.length
+        ? `匹配到 ${pids.length} 名球员，输入更完整的姓名可查看单人数据卡`
+        : '没有匹配的球员';
+      return;
+    }
+
+    const pid = pids[0];
+    const r = data.rows[pid];
+    const p = state.roster[pid] || {};
+    els.statsSearchHint.textContent = '已定位到 1 名球员，下方为该球员在当前口径下的完整数据';
+    els.playerSpotlight.hidden = false;
+
+    const box = document.createDocumentFragment();
+
+    const head = document.createElement('div');
+    head.className = 'ps-head';
+    const ident = document.createElement('div');
+    ident.className = 'ps-ident';
+    const avatar = document.createElement('span');
+    avatar.className = 'ps-avatar';
+    avatar.textContent = p.number || (r.name ? r.name.slice(0, 1) : '?');
+    ident.appendChild(avatar);
+    const nameBox = document.createElement('div');
+    const h = document.createElement('strong');
+    h.textContent = r.name;
+    nameBox.appendChild(h);
+    const sub = document.createElement('span');
+    sub.textContent = [p.position || '', p.joinedAt ? `入队 ${p.joinedAt}` : '', r.active ? '' : '已停用']
+      .filter(Boolean).join(' · ') || '球员';
+    nameBox.appendChild(sub);
+    ident.appendChild(nameBox);
+    head.appendChild(ident);
+
+    const scope = document.createElement('span');
+    scope.className = 'ps-scope';
+    const periodLabel = els.statsPeriod.selectedOptions[0] ? els.statsPeriod.selectedOptions[0].textContent : '';
+    const typeLabel = els.statsType.selectedOptions[0] ? els.statsType.selectedOptions[0].textContent : '';
+    scope.textContent = `${periodLabel} · ${typeLabel} · 共 ${data.totalMatches} 场`;
+    head.appendChild(scope);
+    box.appendChild(head);
+
+    // 各榜单中的名次
+    const ranks = BOARDS.map((board) => {
+      const sorted = sortRows(data.rows, board);
+      const idx = sorted.findIndex((x) => x.row.pid === pid);
+      const item = idx >= 0 ? sorted[idx] : null;
+      return {
+        label: board.label,
+        value: item ? (item.value === null ? '—' : board.fmt(r)) : '—',
+        rank: item && item.ranked ? `#${idx + 1}` : '—',
+        percent: board.percent,
+      };
+    });
+
+    const grid = document.createElement('div');
+    grid.className = 'ps-grid';
+    ranks.forEach((x) => {
+      const cell = document.createElement('div');
+      cell.className = 'ps-cell';
+      const lab = document.createElement('span');
+      lab.className = 'ps-label';
+      lab.textContent = x.label;
+      const val = document.createElement('strong');
+      val.className = 'ps-value';
+      val.textContent = x.value;
+      const rk = document.createElement('span');
+      rk.className = 'ps-rank';
+      rk.textContent = x.rank;
+      cell.appendChild(lab); cell.appendChild(val); cell.appendChild(rk);
+      grid.appendChild(cell);
+    });
+    box.appendChild(grid);
+
+    const detail = document.createElement('div');
+    detail.className = 'ps-detail';
+    detail.textContent = `参加 ${r.appeared} 场 · 有效 ${r.valid} 场 · 胜 ${r.wins} 场 · ` +
+      `出勤率 ${pct(r.attendance)} · 胜率 ${r.winRate === null ? '—' : pct(r.winRate)}` +
+      (p.note ? ` · 备注：${p.note}` : '');
+    box.appendChild(detail);
+
+    els.playerSpotlight.replaceChildren(box);
   }
 
   function overviewCard(title, value, sub, tone, mini) {
@@ -1687,7 +1819,9 @@
     const data = computeStats(period, type);
     const head = ['球员', '出勤率', '出场胜率', '参加', '有效', '胜场', '进球', '助攻', '进球帽子戏法', '助攻帽子戏法', 'MVP', 'SVP', '零封', '状态'];
     const lines = [head.join(',')];
+    const term = statsSearchTerm();
     Object.values(data.rows)
+      .filter((r) => matchesSearch(r, term))
       .sort((a, b) => b.goals - a.goals || a.name.localeCompare(b.name, 'zh'))
       .forEach((r) => {
         lines.push([
@@ -2919,6 +3053,12 @@
     // 统计
     els.statsPeriod.addEventListener('change', renderStats);
     els.statsType.addEventListener('change', renderStats);
+    els.statsSearch.addEventListener('input', renderStats);
+    els.statsSearchClear.addEventListener('click', () => {
+      els.statsSearch.value = '';
+      renderStats();
+      els.statsSearch.focus();
+    });
     els.btnStatsCsv.addEventListener('click', () => {
       downloadFile(`排行榜_${today()}.csv`, statsCsv(), 'text/csv;charset=utf-8');
       toast('排行榜 CSV 已导出');
