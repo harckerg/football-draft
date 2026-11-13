@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#07160f">
-  <meta name="description" content="足球分队系统：录入球员姓名，自定球队数量，拖拽把球员分进各队。纯前端，数据只存在你的浏览器里。">
+  <meta name="description" content="足球分队系统：球员库、比赛档案、单场数据与排行榜。纯前端，数据只存在你的浏览器里。">
   <title>FOOTBALL DRAFT · 足球分队系统</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ccircle cx='50' cy='50' r='46' fill='%23f4f7f0' stroke='%230b1f14' stroke-width='6'/%3E%3Cpath d='M50 26l19 14-7 22H38l-7-22z' fill='%230b1f14'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="./assets/style.css">
@@ -22,7 +22,7 @@
 <!-- ===================== 只读预览提示条 ===================== -->
 <div class="viewbar" id="viewbar" hidden>
   <span class="viewbar-tag">只读预览</span>
-  <span class="viewbar-text">这是别人分享的分队结果</span>
+  <span class="viewbar-text">这是别人分享的单场比赛</span>
   <div class="viewbar-actions">
     <button class="btn btn-primary btn-sm" id="btn-adopt" type="button">复制到我的名单</button>
     <button class="btn btn-ghost btn-sm" id="btn-exit-view" type="button">关闭预览</button>
@@ -42,21 +42,21 @@
     </div>
     <div class="brand-text">
       <h1>FOOTBALL <span>DRAFT</span></h1>
-      <p>足球分队系统 · 拖拽入队 · 一键开球</p>
+      <p>足球分队系统 · 球员库 · 比赛档案 · 排行榜</p>
     </div>
   </div>
 
   <div class="hud" role="status" aria-live="polite">
     <div class="hud-cell">
-      <span>球员</span>
+      <span>球员库</span>
       <strong id="hud-players">0</strong>
     </div>
     <div class="hud-cell">
-      <span>球队</span>
+      <span>总场次</span>
       <strong id="hud-teams">0</strong>
     </div>
     <div class="hud-cell">
-      <span>待分配</span>
+      <span>本场待分配</span>
       <strong id="hud-pool">0</strong>
     </div>
     <div class="hud-cell hud-status">
@@ -68,136 +68,354 @@
   <div class="header-actions">
     <button class="btn btn-ghost" id="btn-undo" type="button" title="撤销 (Ctrl+Z)">↺ 撤销</button>
     <button class="btn btn-lime" id="btn-share" type="button" title="生成分享链接">🔗 分享</button>
-    <button class="btn btn-ghost" id="btn-export" type="button" title="导出名单">⤓ 导出</button>
+    <button class="btn btn-ghost" id="btn-backup" type="button" title="整库备份">⤓ 备份</button>
     <button class="btn btn-ghost btn-danger-ghost" id="btn-reset" type="button">重置</button>
   </div>
 </header>
 
-<!-- ===================== 比赛信息 ===================== -->
-<section class="match-info" id="match-info">
-  <div class="match-tag">
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2.2 3.2 2.3-1.2 3.8h-4L8.8 6.5 12 4.2ZM5.1 9.6l2.9-.1 1.2 3.8-3 2.2-1.1-5.9Zm4 8.2 1-3.4h3.8l1 3.4a7.8 7.8 0 0 1-5.8 0Zm7.9-2.3-3-2.2 1.2-3.8 2.9.1-1.1 5.9Z" fill="currentColor"/>
-    </svg>
-    <span>比赛信息</span>
+<!-- ===================== 分区导航 ===================== -->
+<nav class="app-tabs" id="app-tabs" role="tablist" aria-label="功能分区">
+  <button class="app-tab active" data-view="match" type="button" role="tab" aria-selected="true">⚽ 比赛分队</button>
+  <button class="app-tab" data-view="roster" type="button" role="tab" aria-selected="false">👥 球员库</button>
+  <button class="app-tab" data-view="matches" type="button" role="tab" aria-selected="false">📋 比赛档案</button>
+  <button class="app-tab" data-view="stats" type="button" role="tab" aria-selected="false">🏆 统计排行</button>
+</nav>
+
+<!-- 存储用量条 -->
+<div class="storage-meter" id="storage-meter" hidden>
+  <div class="sm-track"><div class="sm-fill" id="sm-fill"></div></div>
+  <span class="sm-text" id="sm-text"></span>
+  <button class="link-btn" id="btn-storage-backup" type="button">立即备份</button>
+</div>
+
+<!-- ============================================================
+     VIEW 1：比赛 / 分队
+     ============================================================ -->
+<section class="app-view" id="view-match" role="tabpanel">
+
+  <div class="match-switcher">
+    <span class="ms-label">当前比赛</span>
+    <select id="match-select" aria-label="当前比赛"></select>
+    <button class="btn btn-primary btn-sm" id="btn-new-match" type="button">+ 新建比赛</button>
+    <button class="btn btn-ghost btn-sm" id="btn-match-settings" type="button">比赛设置</button>
+    <button class="btn btn-ghost btn-sm btn-danger-ghost" id="btn-delete-match" type="button">删除本场</button>
+    <span class="ms-meta" id="match-meta"></span>
   </div>
 
-  <div class="match-field">
-    <label for="match-venue">场地</label>
-    <input id="match-venue" type="text" maxlength="40" placeholder="例如：工人体育场 3 号场" autocomplete="off">
+  <section class="match-info" id="match-info">
+    <div class="match-tag">
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm0 2.2 3.2 2.3-1.2 3.8h-4L8.8 6.5 12 4.2ZM5.1 9.6l2.9-.1 1.2 3.8-3 2.2-1.1-5.9Zm4 8.2 1-3.4h3.8l1 3.4a7.8 7.8 0 0 1-5.8 0Zm7.9-2.3-3-2.2 1.2-3.8 2.9.1-1.1 5.9Z" fill="currentColor"/>
+      </svg>
+      <span>比赛信息</span>
+    </div>
+    <div class="match-field">
+      <label for="match-venue">场地</label>
+      <input id="match-venue" type="text" maxlength="40" placeholder="例如：工人体育场 3 号场" autocomplete="off">
+    </div>
+    <div class="match-field">
+      <label for="match-kickoff">比赛时间</label>
+      <input id="match-kickoff" type="datetime-local" autocomplete="off">
+    </div>
+    <div class="match-field">
+      <label for="match-opponent">对手名称</label>
+      <input id="match-opponent" type="text" maxlength="40" placeholder="例如：城东联队" autocomplete="off">
+    </div>
+    <button class="link-btn match-clear" id="match-clear" type="button" title="清空比赛信息">清空</button>
+  </section>
+
+  <!-- 比分录入 -->
+  <div class="score-strip" id="score-strip">
+    <span class="ss-title">本场比分</span>
+    <div class="ss-teams" id="ss-teams"></div>
+    <span class="ss-result" id="ss-result"></span>
   </div>
 
-  <div class="match-field">
-    <label for="match-kickoff">比赛时间</label>
-    <input id="match-kickoff" type="datetime-local" autocomplete="off">
-  </div>
+  <main class="layout">
+    <!-- 左侧：本场报名名单 -->
+    <aside class="panel roster">
+      <div class="panel-head">
+        <h2><i class="dot lime"></i>本场报名</h2>
+        <span class="pill" id="roster-count">0 人</span>
+      </div>
 
-  <div class="match-field">
-    <label for="match-opponent">对手名称</label>
-    <input id="match-opponent" type="text" maxlength="40" placeholder="例如：城东联队" autocomplete="off">
-  </div>
+      <form class="add-form" id="player-form" autocomplete="off">
+        <input id="player-input" type="text" maxlength="24" placeholder="新球员：输入姓名后回车（会存入球员库）"
+               aria-label="球员姓名">
+        <button class="btn btn-primary" type="submit">加入</button>
+      </form>
 
-  <button class="link-btn match-clear" id="match-clear" type="button" title="清空比赛信息">清空</button>
+      <div class="roster-tools">
+        <button class="link-btn" id="btn-from-library" type="button">从球员库添加</button>
+        <button class="link-btn" id="btn-batch" type="button">批量粘贴</button>
+        <button class="link-btn danger" id="btn-clear-roster" type="button">清空本场名单</button>
+        <input id="roster-search" class="search" type="search" placeholder="搜索球员…" aria-label="搜索球员">
+      </div>
+
+      <ul class="roster-list" id="roster-list"></ul>
+
+      <p class="panel-hint">
+        拖动球员名牌到球场即可入队；也可以先点选球员，再点目标球场。
+        队名直接点开就能改，点球衣图标可以换队色。
+      </p>
+    </aside>
+
+    <!-- 右侧：分组板 -->
+    <section class="board">
+      <div class="board-head">
+        <h2>
+          分组板
+          <span class="board-sub" id="board-sub">2 支球队</span>
+        </h2>
+        <div class="board-tools">
+          <div class="stepper" title="球队数量">
+            <button type="button" data-step="-1" aria-label="减少球队">−</button>
+            <input id="team-count" type="number" min="2" max="12" value="2" aria-label="球队数量">
+            <button type="button" data-step="1" aria-label="增加球队">+</button>
+          </div>
+          <button class="btn btn-lime" id="btn-shuffle" type="button">⚡ 随机分队</button>
+          <button class="btn btn-ghost" id="btn-clear-teams" type="button">清空队伍</button>
+        </div>
+      </div>
+
+      <div class="board-empty" id="board-empty">
+        <div class="empty-crest">
+          <svg viewBox="0 0 64 64" aria-hidden="true">
+            <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2.5"/>
+            <path d="M32 15l13.8 10-5.3 16.2H23.5L18.2 25z" fill="currentColor" opacity=".85"/>
+          </svg>
+        </div>
+        <h3>先填写本场报名名单</h3>
+        <p>从球员库勾选报名球员，或直接在左侧输入新名字，再设定球队数量，把球员拖进各自的球场。</p>
+        <button class="btn btn-lime" id="btn-demo" type="button">载入示例名单</button>
+      </div>
+
+      <div class="teams" id="teams"></div>
+    </section>
+  </main>
+
+  <!-- 替补席 -->
+  <footer class="tray">
+    <div class="tray-head">
+      <span class="tray-title">替补席</span>
+      <span class="tray-sub">待分配</span>
+      <span class="tray-count" id="tray-count">0</span>
+    </div>
+    <div class="tray-body dropzone" id="pool" data-zone="pool">
+      <span class="tray-empty">全部球员都已就位，准备开球！</span>
+    </div>
+  </footer>
 </section>
 
-<!-- ===================== 主体 ===================== -->
-<main class="layout">
-
-  <!-- 左侧：球员名单 -->
-  <aside class="panel roster">
-    <div class="panel-head">
-      <h2><i class="dot lime"></i>球员名单</h2>
-      <span class="pill" id="roster-count">0 人</span>
+<!-- ============================================================
+     VIEW 2：球员库
+     ============================================================ -->
+<section class="app-view" id="view-roster" role="tabpanel" hidden>
+  <div class="view-head">
+    <div>
+      <h2>球员库</h2>
+      <p class="view-sub">所有球员的长期主数据。勾选后可以一键加入本场报名。</p>
     </div>
-
-    <form class="add-form" id="player-form" autocomplete="off">
-      <input id="player-input" type="text" maxlength="24" placeholder="输入姓名后回车，可一次粘贴多个"
-             aria-label="球员姓名">
-      <button class="btn btn-primary" type="submit">加入</button>
-    </form>
-
-    <div class="roster-tools">
-      <button class="link-btn" id="btn-batch" type="button">批量粘贴</button>
-      <button class="link-btn" id="btn-import" type="button">导入备份</button>
-      <button class="link-btn danger" id="btn-clear-roster" type="button">清空名单</button>
-      <input id="roster-search" class="search" type="search" placeholder="搜索球员…" aria-label="搜索球员">
+    <div class="view-actions">
+      <button class="btn btn-primary" id="btn-player-add" type="button">+ 新增球员</button>
+      <button class="btn btn-ghost" id="btn-player-batch" type="button">批量导入</button>
+      <button class="btn btn-ghost" id="btn-import" type="button">导入备份</button>
+      <input id="lib-search" class="search lib-search" type="search" placeholder="搜索姓名 / 号码 / 备注" aria-label="搜索球员库">
     </div>
-
-    <ul class="roster-list" id="roster-list"></ul>
-
-    <p class="panel-hint">
-      拖动球员名牌到球场即可入队；也可以先点选球员，再点目标球场。
-      球队名字直接点开就能改，点球衣图标可以换队色。
-    </p>
-  </aside>
-
-  <!-- 右侧：分组板 -->
-  <section class="board">
-    <div class="board-head">
-      <h2>
-        分组板
-        <span class="board-sub" id="board-sub">2 支球队</span>
-      </h2>
-      <div class="board-tools">
-        <div class="stepper" title="球队数量">
-          <button type="button" data-step="-1" aria-label="减少球队">−</button>
-          <input id="team-count" type="number" min="2" max="12" value="2" aria-label="球队数量">
-          <button type="button" data-step="1" aria-label="增加球队">+</button>
-        </div>
-        <button class="btn btn-lime" id="btn-shuffle" type="button">⚡ 随机分队</button>
-        <button class="btn btn-ghost" id="btn-clear-teams" type="button">清空队伍</button>
-      </div>
-    </div>
-
-    <div class="board-empty" id="board-empty">
-      <div class="empty-crest">
-        <svg viewBox="0 0 64 64" aria-hidden="true">
-          <circle cx="32" cy="32" r="27" fill="none" stroke="currentColor" stroke-width="2.5"/>
-          <path d="M32 15l13.8 10-5.3 16.2H23.5L18.2 25z" fill="currentColor" opacity=".85"/>
-        </svg>
-      </div>
-      <h3>先填写球员名单</h3>
-      <p>在左侧输入姓名，或一次粘贴整份名单，再设定球队数量，把球员拖进各自的球场。</p>
-      <button class="btn btn-lime" id="btn-demo" type="button">载入示例名单</button>
-    </div>
-
-    <div class="teams" id="teams"></div>
-  </section>
-</main>
-
-<!-- ===================== 替补席 ===================== -->
-<footer class="tray">
-  <div class="tray-head">
-    <span class="tray-title">替补席</span>
-    <span class="tray-sub">待分配</span>
-    <span class="tray-count" id="tray-count">0</span>
   </div>
-  <div class="tray-body dropzone" id="pool" data-zone="pool">
-    <span class="tray-empty">全部球员都已就位，准备开球！</span>
+
+  <div class="library-summary" id="library-summary"></div>
+
+  <div class="table-wrap">
+    <table class="data-table" id="library-table">
+      <thead>
+        <tr>
+          <th class="col-check"><input type="checkbox" id="lib-check-all" aria-label="全选"></th>
+          <th>姓名</th>
+          <th>号码</th>
+          <th>位置</th>
+          <th>入队日</th>
+          <th class="col-num">参加</th>
+          <th>备注</th>
+          <th class="col-ops">操作</th>
+        </tr>
+      </thead>
+      <tbody id="library-body"></tbody>
+    </table>
   </div>
-</footer>
+
+  <div class="lib-footer">
+    <span class="lib-selected" id="lib-selected">已勾选 0 人</span>
+    <button class="btn btn-lime" id="btn-register-selected" type="button">加入本场报名</button>
+    <button class="btn btn-ghost" id="btn-register-active" type="button">全部在用球员报名</button>
+  </div>
+</section>
+
+<!-- ============================================================
+     VIEW 3：比赛档案
+     ============================================================ -->
+<section class="app-view" id="view-matches" role="tabpanel" hidden>
+  <div class="view-head">
+    <div>
+      <h2>比赛档案</h2>
+      <p class="view-sub">记录每场比分与逐人数据。统计与排行榜全部由这些原始记录实时计算。</p>
+    </div>
+    <div class="view-actions">
+      <button class="btn btn-primary" id="btn-archive-new" type="button">+ 新建比赛</button>
+      <select id="archive-type" class="mini-select" aria-label="按类型筛选">
+        <option value="all">全部类型</option>
+        <option value="internal">仅内战</option>
+        <option value="external">仅外战</option>
+      </select>
+      <select id="archive-period" class="mini-select" aria-label="按时段筛选"></select>
+    </div>
+  </div>
+
+  <div class="archive-summary" id="archive-summary"></div>
+  <div class="match-cards" id="match-cards"></div>
+</section>
+
+<!-- ============================================================
+     VIEW 4：统计 / 排行榜
+     ============================================================ -->
+<section class="app-view" id="view-stats" role="tabpanel" hidden>
+  <div class="view-head">
+    <div>
+      <h2>统计与排行榜</h2>
+      <p class="view-sub">全部数字实时聚合，改动任意一场历史记录后立即自洽。</p>
+    </div>
+    <div class="view-actions">
+      <select id="stats-period" class="mini-select" aria-label="统计时段"></select>
+      <select id="stats-type" class="mini-select" aria-label="比赛类型">
+        <option value="all">全部比赛</option>
+        <option value="internal">仅内战</option>
+        <option value="external">仅外战</option>
+      </select>
+      <button class="btn btn-primary" id="btn-stats-csv" type="button">⤓ 导出 CSV</button>
+    </div>
+  </div>
+
+  <div class="stats-note" id="stats-note"></div>
+  <div class="overview-cards" id="overview-cards"></div>
+  <div class="leaderboards" id="leaderboards"></div>
+</section>
 
 <!-- ===================== 对话框 ===================== -->
 <dialog class="dialog" id="dialog-batch">
   <div class="dialog-inner">
-    <h3>批量粘贴球员</h3>
-    <p>每行一个名字，也可以用逗号、顿号或分号分隔。</p>
+    <h3 id="batch-title">批量粘贴球员</h3>
+    <p>每行一个名字，也可以用逗号、顿号或分号分隔。新名字会自动存入球员库。</p>
     <textarea id="batch-text" rows="10" spellcheck="false" placeholder="张三&#10;李四&#10;王五"></textarea>
     <div class="dialog-actions">
       <button class="btn btn-ghost" type="button" data-close="1">取消</button>
-      <button class="btn btn-primary" type="button" id="batch-ok">加入名单</button>
+      <button class="btn btn-primary" type="button" id="batch-ok">确定</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-library">
+  <div class="dialog-inner">
+    <h3>从球员库添加报名</h3>
+    <p>勾选要加入本场的球员，已在本场名单里的会自动跳过。</p>
+    <input id="picker-search" class="search" type="search" placeholder="搜索球员…" aria-label="搜索球员">
+    <div class="picker-list" id="picker-list"></div>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-primary" type="button" id="picker-ok">加入本场</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-player">
+  <div class="dialog-inner">
+    <h3 id="player-dialog-title">新增球员</h3>
+    <div class="form-grid">
+      <label>姓名 <input id="pd-name" type="text" maxlength="24" placeholder="必填"></label>
+      <label>号码 <input id="pd-number" type="text" maxlength="5" placeholder="选填"></label>
+      <label>位置
+        <select id="pd-position">
+          <option value="">未设</option>
+          <option value="GK">门将 GK</option>
+          <option value="DF">后卫 DF</option>
+          <option value="MF">中场 MF</option>
+          <option value="FW">前锋 FW</option>
+        </select>
+      </label>
+      <label>入队日 <input id="pd-joined" type="date"></label>
+      <label class="span-2">备注 <input id="pd-note" type="text" maxlength="100" placeholder="选填"></label>
+    </div>
+    <label class="check-line"><input id="pd-active" type="checkbox" checked> 在用（取消即停用，历史记录保留）</label>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-primary" type="button" id="player-ok">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-match">
+  <div class="dialog-inner">
+    <h3 id="match-dialog-title">新建比赛</h3>
+    <div class="form-grid">
+      <label>比赛日期 <input id="md-date" type="date"></label>
+      <label>类型
+        <select id="md-type">
+          <option value="internal">内战（自己人分队互踢）</option>
+          <option value="external">外战（对外打对手）</option>
+        </select>
+      </label>
+      <label>场地 <input id="md-venue" type="text" maxlength="40"></label>
+      <label>开球时间 <input id="md-kickoff" type="datetime-local"></label>
+      <label class="span-2">对手名称（外战必填） <input id="md-opponent" type="text" maxlength="40"></label>
+      <label class="span-2">备注 <input id="md-note" type="text" maxlength="100" placeholder="选填"></label>
+    </div>
+    <label class="check-line"><input id="md-copy-squad" type="checkbox"> 沿用当前比赛的报名名单与分队</label>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-primary" type="button" id="match-ok">保存</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-merge">
+  <div class="dialog-inner">
+    <h3>合并重复球员</h3>
+    <p>把 <strong id="merge-source"></strong> 的所有历史记录转移到下面这位球员，源球员会被停用并保留供回查。</p>
+    <label>合并到
+      <select id="merge-target"></select>
+    </label>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">取消</button>
+      <button class="btn btn-primary" type="button" id="merge-ok">确认合并</button>
+    </div>
+  </div>
+</dialog>
+
+<dialog class="dialog" id="dialog-backup">
+  <div class="dialog-inner">
+    <h3>整库备份与导入</h3>
+    <p>数据只存在这台设备的浏览器里。建议定期下载备份，换设备或清理浏览器数据前务必先备份。</p>
+    <div class="backup-meta" id="backup-meta"></div>
+    <div class="backup-grid">
+      <button class="btn btn-primary" type="button" id="backup-download">⤓ 下载整库备份</button>
+      <button class="btn btn-lime" type="button" id="backup-csv">⤓ 导出比赛明细 CSV</button>
+      <button class="btn btn-ghost" type="button" id="backup-import-cover">覆盖导入</button>
+      <button class="btn btn-ghost" type="button" id="backup-import-merge">合并导入</button>
+    </div>
+    <p class="backup-hint">覆盖导入会先自动留一份当前数据；合并导入按姓名合并球员、按比赛 ID 去重。</p>
+    <div class="dialog-actions">
+      <button class="btn btn-ghost" type="button" data-close="1">关闭</button>
     </div>
   </div>
 </dialog>
 
 <dialog class="dialog" id="dialog-share">
   <div class="dialog-inner">
-    <h3>分享这份分队结果</h3>
-    <p>链接里带着当前名单和分队，对方打开就能看，点「复制到我的名单」就能接着改。数据不会上传到任何服务器。</p>
+    <h3>分享这一场比赛</h3>
+    <p>链接里带着本场名单、分队、比分与比赛信息，对方打开是只读预览，点「复制到我的名单」就能接着改。数据不会上传到任何服务器。</p>
     <input class="share-url" id="share-url" type="text" readonly aria-label="分享链接">
     <p class="share-meta" id="share-meta"></p>
     <div class="dialog-actions">
-      <button class="btn btn-ghost" type="button" id="share-download">下载备份</button>
+      <button class="btn btn-ghost" type="button" data-close="1">关闭</button>
       <button class="btn btn-primary" type="button" id="share-copy">复制链接</button>
     </div>
   </div>
@@ -215,11 +433,12 @@
 </dialog>
 
 <input type="file" id="import-file" accept=".json,application/json" hidden>
+<input type="file" id="import-file-2" accept=".json,application/json" hidden>
 
 <div class="toasts" id="toasts" aria-live="polite"></div>
 
 <noscript>
-  <div class="noscript">这个页面需要启用 JavaScript 才能拖拽分队。</div>
+  <div class="noscript">这个页面需要启用 JavaScript 才能使用。</div>
 </noscript>
 
 <script src="./assets/app.js" defer></script>
